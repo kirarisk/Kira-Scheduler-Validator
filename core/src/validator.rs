@@ -182,6 +182,7 @@ pub enum BlockProductionMethod {
     CentralScheduler,
     #[default]
     CentralSchedulerGreedy,
+    KiraScheduler,
 }
 
 impl BlockProductionMethod {

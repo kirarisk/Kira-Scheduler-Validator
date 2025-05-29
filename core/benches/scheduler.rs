@@ -9,6 +9,7 @@ use {
         scheduler_messages::{ConsumeWork, FinishedConsumeWork},
         transaction_scheduler::{
             greedy_scheduler::{GreedyScheduler, GreedySchedulerConfig},
+            kira_scheduler::{KiraScheduler, KiraSchedulerConfig},
             prio_graph_scheduler::{PrioGraphScheduler, PrioGraphSchedulerConfig},
             receive_and_buffer::{
                 ReceiveAndBuffer, SanitizedTransactionReceiveAndBuffer,
@@ -119,8 +120,11 @@ fn bench_scheduler_impl<T: ReceiveAndBuffer + utils::ReceiveAndBufferCreator>(
     let mut group = c.benchmark_group("bench_scheduler");
     group.sample_size(10);
 
-    let scheduler_types: Vec<(bool, &str)> =
-        vec![(true, "greedy_scheduler"), (false, "prio_graph_scheduler")];
+    let scheduler_types: Vec<(&str, &str)> = vec![
+        ("greedy", "greedy_scheduler"),
+        ("prio_graph", "prio_graph_scheduler"),
+        ("kira", "kira_scheduler"),
+    ];
     //solana_core::banking_stage::TOTAL_BUFFERED_PACKETS took too long
     let tx_counts: Vec<(usize, &str)> = vec![(16 * 1024, "16K_txs")];
     let ix_counts: Vec<(usize, &str)> = vec![
@@ -129,7 +133,7 @@ fn bench_scheduler_impl<T: ReceiveAndBuffer + utils::ReceiveAndBufferCreator>(
     ];
     let conflict_types: Vec<(bool, &str)> = vec![(true, "single-payer"), (false, "unique_payer")];
 
-    for (is_greedy_scheduler, scheduler_desc) in scheduler_types {
+    for (scheduler_type, scheduler_desc) in scheduler_types {
         for (ix_count, ix_count_desc) in &ix_counts {
             for (tx_count, tx_count_desc) in &tx_counts {
                 for (conflict_type, conflict_type_desc) in &conflict_types {
@@ -148,8 +152,8 @@ fn bench_scheduler_impl<T: ReceiveAndBuffer + utils::ReceiveAndBufferCreator>(
                                 );
                             let bench_env: BenchEnv<T::Transaction> = BenchEnv::new();
 
-                            if is_greedy_scheduler {
-                                timing_scheduler(
+                            match scheduler_type {
+                                "greedy" => timing_scheduler(
                                     setup,
                                     &bench_env,
                                     GreedyScheduler::new(
@@ -158,9 +162,8 @@ fn bench_scheduler_impl<T: ReceiveAndBuffer + utils::ReceiveAndBufferCreator>(
                                         GreedySchedulerConfig::default(),
                                     ),
                                     iters,
-                                )
-                            } else {
-                                timing_scheduler(
+                                ),
+                                "prio_graph" => timing_scheduler(
                                     setup,
                                     &bench_env,
                                     PrioGraphScheduler::new(
@@ -169,7 +172,18 @@ fn bench_scheduler_impl<T: ReceiveAndBuffer + utils::ReceiveAndBufferCreator>(
                                         PrioGraphSchedulerConfig::default(),
                                     ),
                                     iters,
-                                )
+                                ),
+                                "kira" => timing_scheduler(
+                                    setup,
+                                    &bench_env,
+                                    KiraScheduler::new(
+                                        bench_env.consume_work_senders.clone(),
+                                        bench_env.finished_consume_work_receiver.clone(),
+                                        KiraSchedulerConfig::default(),
+                                    ),
+                                    iters,
+                                ),
+                                _ => unreachable!("Unknown scheduler type"),
                             }
                         })
                     });

@@ -4,6 +4,7 @@ mod batch_id_generator;
 conditional_vis_mod!(greedy_scheduler, feature = "dev-context-only-utils", pub, pub(crate));
 mod in_flight_tracker;
 conditional_vis_mod!(prio_graph_scheduler, feature = "dev-context-only-utils", pub, pub(crate));
+conditional_vis_mod!(kira_scheduler, feature = "dev-context-only-utils", pub, pub(crate));
 conditional_vis_mod!(receive_and_buffer, feature = "dev-context-only-utils", pub, pub(crate));
 conditional_vis_mod!(scheduler, feature = "dev-context-only-utils", pub, pub(crate));
 pub(crate) mod scheduler_common;
