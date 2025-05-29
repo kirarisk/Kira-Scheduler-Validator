@@ -617,20 +617,20 @@ impl BankingStage {
         // Spawn the central scheduler thread
         match scheduler_type {
             SchedulerType::Greedy => {
-                let scheduler = GreedyScheduler::new(
-                    work_senders,
-                    finished_work_receiver,
-                    GreedySchedulerConfig::default(),
-                );
-                spawn_scheduler!(scheduler);
+            let scheduler = GreedyScheduler::new(
+                work_senders,
+                finished_work_receiver,
+                GreedySchedulerConfig::default(),
+            );
+            spawn_scheduler!(scheduler);
             }
             SchedulerType::PrioGraph => {
-                let scheduler = PrioGraphScheduler::new(
-                    work_senders,
-                    finished_work_receiver,
-                    PrioGraphSchedulerConfig::default(),
-                );
-                spawn_scheduler!(scheduler);
+            let scheduler = PrioGraphScheduler::new(
+                work_senders,
+                finished_work_receiver,
+                PrioGraphSchedulerConfig::default(),
+            );
+            spawn_scheduler!(scheduler);
             }
             SchedulerType::Kira => {
                 let scheduler = KiraScheduler::new(
