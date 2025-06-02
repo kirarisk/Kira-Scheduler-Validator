@@ -146,6 +146,7 @@ use {
     strum_macros::{Display, EnumCount, EnumIter, EnumString, EnumVariantNames, IntoStaticStr},
     thiserror::Error,
     tokio::runtime::Runtime as TokioRuntime,
+    tokio_util::sync::CancellationToken,
 };
 
 const MAX_COMPLETED_DATA_SETS_IN_CHANNEL: usize = 100_000;
@@ -182,7 +183,6 @@ pub enum BlockProductionMethod {
     CentralScheduler,
     #[default]
     CentralSchedulerGreedy,
-    KiraScheduler,
 }
 
 impl BlockProductionMethod {
@@ -367,7 +367,7 @@ impl Default for ValidatorConfig {
             replay_transactions_threads: NonZeroUsize::new(1).expect("1 is non-zero"),
             tvu_shred_sigverify_threads: NonZeroUsize::new(1).expect("1 is non-zero"),
             delay_leader_block_for_pending_fork: false,
-            use_tpu_client_next: false,
+            use_tpu_client_next: true,
             retransmit_xdp: None,
         }
     }
@@ -732,6 +732,8 @@ impl Validator {
             }
         }
 
+        // token used to cancel tpu-client-next.
+        let cancel_tpu_client_next = CancellationToken::new();
         {
             let exit = exit.clone();
             config
@@ -739,6 +741,12 @@ impl Validator {
                 .write()
                 .unwrap()
                 .register_exit(Box::new(move || exit.store(true, Ordering::Relaxed)));
+            let cancel_tpu_client_next = cancel_tpu_client_next.clone();
+            config
+                .validator_exit
+                .write()
+                .unwrap()
+                .register_exit(Box::new(move || cancel_tpu_client_next.cancel()));
         }
 
         let accounts_update_notifier = geyser_plugin_service
@@ -1178,6 +1186,7 @@ impl Validator {
                     Arc::as_ref(&identity_keypair),
                     node.sockets.rpc_sts_client,
                     runtime_handle.clone(),
+                    cancel_tpu_client_next.clone(),
                 )
             } else {
                 let Some(connection_cache) = &connection_cache else {
@@ -1596,6 +1605,7 @@ impl Validator {
                     .take()
                     .expect("Socket should exist."),
                 runtime_handle.clone(),
+                cancel_tpu_client_next,
             ))
         };
         let tpu = Tpu::new_with_client(

@@ -16,7 +16,6 @@ use {
             transaction_scheduler::{
                 prio_graph_scheduler::PrioGraphScheduler,
                 scheduler_controller::SchedulerController, scheduler_error::SchedulerError,
-                kira_scheduler::{KiraScheduler, KiraSchedulerConfig}
             },
         },
         validator::{BlockProductionMethod, TransactionStructure},
@@ -84,13 +83,6 @@ conditional_vis_mod!(unified_scheduler, feature = "dev-context-only-utils", pub,
 
 // Fixed thread size seems to be fastest on GCP setup
 pub const NUM_THREADS: u32 = 6;
-
-#[derive(Clone, Copy)]
-pub enum SchedulerType {
-    PrioGraph,
-    Greedy,
-    Kira,
-}
 
 #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 const TOTAL_BUFFERED_PACKETS: usize = 100_000;
@@ -423,16 +415,14 @@ impl BankingStage {
     ) -> Self {
         match block_production_method {
             BlockProductionMethod::CentralScheduler
-            | BlockProductionMethod::CentralSchedulerGreedy
-            | BlockProductionMethod::KiraScheduler => {
-                let scheduler_type = match block_production_method {
-                    BlockProductionMethod::CentralScheduler => SchedulerType::PrioGraph,
-                    BlockProductionMethod::CentralSchedulerGreedy => SchedulerType::Greedy,
-                    BlockProductionMethod::KiraScheduler => SchedulerType::Kira,
-                };
+            | BlockProductionMethod::CentralSchedulerGreedy => {
+                let use_greedy_scheduler = matches!(
+                    block_production_method,
+                    BlockProductionMethod::CentralSchedulerGreedy
+                );
                 Self::new_central_scheduler(
                     transaction_struct,
-                    scheduler_type,
+                    use_greedy_scheduler,
                     cluster_info,
                     poh_recorder,
                     transaction_recorder,
@@ -453,7 +443,7 @@ impl BankingStage {
     #[allow(clippy::too_many_arguments)]
     pub fn new_central_scheduler(
         transaction_struct: TransactionStructure,
-        scheduler_type: SchedulerType,
+        use_greedy_scheduler: bool,
         cluster_info: &impl LikeClusterInfo,
         poh_recorder: &Arc<RwLock<PohRecorder>>,
         transaction_recorder: TransactionRecorder,
@@ -504,7 +494,7 @@ impl BankingStage {
                 Self::spawn_scheduler_and_workers(
                     &mut bank_thread_hdls,
                     receive_and_buffer,
-                    scheduler_type,
+                    use_greedy_scheduler,
                     decision_maker,
                     committer,
                     poh_recorder,
@@ -522,7 +512,7 @@ impl BankingStage {
                 Self::spawn_scheduler_and_workers(
                     &mut bank_thread_hdls,
                     receive_and_buffer,
-                    scheduler_type,
+                    use_greedy_scheduler,
                     decision_maker,
                     committer,
                     poh_recorder,
@@ -541,7 +531,7 @@ impl BankingStage {
     fn spawn_scheduler_and_workers<R: ReceiveAndBuffer + Send + Sync + 'static>(
         bank_thread_hdls: &mut Vec<JoinHandle<()>>,
         receive_and_buffer: R,
-        scheduler_type: SchedulerType,
+        use_greedy_scheduler: bool,
         decision_maker: DecisionMaker,
         committer: Committer,
         poh_recorder: &Arc<RwLock<PohRecorder>>,
@@ -615,31 +605,20 @@ impl BankingStage {
         }
 
         // Spawn the central scheduler thread
-        match scheduler_type {
-            SchedulerType::Greedy => {
+        if use_greedy_scheduler {
             let scheduler = GreedyScheduler::new(
                 work_senders,
                 finished_work_receiver,
                 GreedySchedulerConfig::default(),
             );
             spawn_scheduler!(scheduler);
-            }
-            SchedulerType::PrioGraph => {
+        } else {
             let scheduler = PrioGraphScheduler::new(
                 work_senders,
                 finished_work_receiver,
                 PrioGraphSchedulerConfig::default(),
             );
             spawn_scheduler!(scheduler);
-            }
-            SchedulerType::Kira => {
-                let scheduler = KiraScheduler::new(
-                    work_senders,
-                    finished_work_receiver,
-                    KiraSchedulerConfig::default(),
-                );
-                spawn_scheduler!(scheduler);
-            }
         }
     }
 
